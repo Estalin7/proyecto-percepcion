@@ -1,0 +1,6 @@
+venv_gpu/
+venv_signtalk/
+*.npy
+*.keras
+DATOS/
+__pycache__/

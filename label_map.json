@@ -1,0 +1,9 @@
+{
+  "ARDOR": 0,
+  "DOLOR": 1,
+  "ESPALDA": 2,
+  "ESTOMAGO": 3,
+  "GARGANTA": 4,
+  "GRIPE": 5,
+  "NAUSEAS": 6
+}

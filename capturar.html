@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SignTalk — Capturador de Dataset</title>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg: #080810;
+    --surface: #0f0f1a;
+    --surface2: #14141f;
+    --border: #1c1c2e;
+    --accent: #7c5cfc;
+    --accent2: #00e5c0;
+    --accent3: #ff6b9d;
+    --danger: #ff4d6d;
+    --warn: #f59e0b;
+    --success: #10b981;
+    --text: #e8e8f0;
+    --muted: #4a4a68;
+    --mono: 'Space Mono', monospace;
+    --sans: 'DM Sans', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    grid-template-rows: 60px 1fr;
+    overflow: hidden;
+  }
+
+  /* HEADER */
+  header {
+    grid-column: 1 / -1;
+    padding: 0 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: var(--surface);
+    backdrop-filter: blur(10px);
+  }
+
+  .logo {
+    font-family: var(--mono);
+    font-size: 15px;
+    color: var(--accent2);
+    letter-spacing: 3px;
+    font-weight: 700;
+  }
+  .logo span { color: var(--accent); }
+
+  .pipe-sep { width: 1px; height: 20px; background: var(--border); }
+
+  .header-tag {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--mono);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  #header-status {
+    margin-left: auto;
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+  }
+  .status-dot.online { background: var(--accent2); box-shadow: 0 0 8px var(--accent2); }
+
+  /* LEFT PANEL */
+  .left-panel {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .panel-section {
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* MODE TOGGLE */
+  .mode-toggle {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 3px;
+    gap: 3px;
+  }
+  .mode-btn {
+    padding: 8px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 10px;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+  }
+  .mode-btn.active {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  /* SEÑAS BATCH */
+  .señas-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .seña-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    cursor: pointer;
+    transition: all 0.15s;
+    gap: 10px;
+  }
+  .seña-item:hover { border-color: var(--accent); }
+  .seña-item.active { border-color: var(--accent); background: rgba(124,92,252,0.08); }
+  .seña-item.done { border-color: var(--success); background: rgba(16,185,129,0.06); }
+  .seña-item.current { border-color: var(--accent2); background: rgba(0,229,192,0.08); animation: glow-border 1.5s infinite; }
+
+  @keyframes glow-border {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(0,229,192,0); }
+    50% { box-shadow: 0 0 12px rgba(0,229,192,0.3); }
+  }
+
+  .seña-icon {
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    background: var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .seña-info { flex: 1; }
+  .seña-name { font-family: var(--mono); font-size: 11px; color: var(--text); letter-spacing: 1px; }
+  .seña-count { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 1px; }
+
+  .seña-status {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px;
+    flex-shrink: 0;
+  }
+  .seña-status.pending { background: var(--border); color: var(--muted); }
+  .seña-status.in-progress { background: rgba(0,229,192,0.2); color: var(--accent2); }
+  .seña-status.done { background: rgba(16,185,129,0.2); color: var(--success); }
+
+  /* MANUAL INPUT */
+  .input-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+  .input-group label {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--mono);
+    letter-spacing: 0.5px;
+  }
+  input[type="text"], input[type="number"], select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 9px 12px;
+    font-family: var(--mono);
+    font-size: 12px;
+    width: 100%;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+
+  /* BUTTONS */
+  .btn {
+    padding: 10px 16px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    transition: all 0.15s;
+    width: 100%;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+  }
+  .btn + .btn { margin-top: 6px; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: #6a4ae8; transform: translateY(-1px); box-shadow: 0 4px 20px rgba(124,92,252,0.4); }
+  .btn-primary:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; }
+  .btn-success { background: var(--accent2); color: var(--bg); }
+  .btn-success:hover:not(:disabled) { opacity: 0.85; transform: translateY(-1px); }
+  .btn-success:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; }
+  .btn-outline { background: transparent; color: var(--accent2); border: 1px solid var(--accent2); }
+  .btn-outline:hover:not(:disabled) { background: rgba(0,229,192,0.08); }
+  .btn-outline:disabled { border-color: var(--border); color: var(--muted); cursor: not-allowed; }
+  .btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+  .btn-danger:hover:not(:disabled) { background: var(--danger); color: #fff; }
+  .btn-danger:disabled { border-color: var(--border); color: var(--muted); cursor: not-allowed; }
+
+  /* STATS */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .stat-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+  }
+  .stat-card .val {
+    font-family: var(--mono);
+    font-size: 22px;
+    color: var(--accent);
+    font-weight: 700;
+  }
+  .stat-card .lbl {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+
+  /* PROGRESS */
+  .progress-wrap {
+    background: var(--border);
+    border-radius: 4px;
+    height: 4px;
+    overflow: hidden;
+    margin-top: 8px;
+  }
+  .progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    width: 0%;
+    transition: width 0.15s;
+    border-radius: 4px;
+  }
+
+  .rep-info {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 6px;
+  }
+  .rep-info span { color: var(--accent2); }
+
+  /* RIGHT PANEL */
+  .right-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    position: relative;
+    gap: 14px;
+    background: radial-gradient(ellipse at center, #0d0d1a 0%, var(--bg) 100%);
+  }
+
+  .phase-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+
+  .current-seña {
+    font-family: var(--mono);
+    font-size: 36px;
+    color: var(--accent);
+    letter-spacing: 6px;
+    text-transform: uppercase;
+    text-shadow: 0 0 30px rgba(124,92,252,0.5);
+    min-height: 50px;
+    text-align: center;
+  }
+
+  .video-container {
+    position: relative;
+    width: 100%;
+    max-width: 580px;
+  }
+
+  video {
+    width: 100%;
+    border-radius: 16px;
+    transform: scaleX(-1);
+    display: block;
+    border: 1px solid var(--border);
+  }
+
+  .video-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    border-radius: 16px;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .big-countdown {
+    position: absolute;
+    font-family: var(--mono);
+    font-size: 110px;
+    font-weight: 700;
+    color: var(--accent2);
+    opacity: 0.9;
+    text-shadow: 0 0 60px rgba(0,229,192,0.6);
+    display: none;
+    animation: countPulse 0.5s ease-out;
+  }
+
+  @keyframes countPulse {
+    from { transform: scale(1.3); opacity: 0.5; }
+    to { transform: scale(1); opacity: 0.9; }
+  }
+
+  .recording-indicator {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(8,8,16,0.85);
+    backdrop-filter: blur(8px);
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-family: var(--mono);
+    font-size: 11px;
+    border: 1px solid transparent;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .recording-indicator.active {
+    opacity: 1;
+    border-color: var(--danger);
+    color: var(--danger);
+  }
+  .rec-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--danger);
+    animation: pulse 1s infinite;
+  }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+
+  /* corner badge */
+  .corner-badge {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    background: rgba(8,8,16,0.85);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 4px 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent2);
+  }
+
+  /* STATUS BAR */
+  .status-bar {
+    width: 100%;
+    max-width: 580px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 11px 16px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    text-align: center;
+    transition: all 0.3s;
+    letter-spacing: 0.5px;
+  }
+  .status-bar.active { color: var(--accent2); border-color: rgba(0,229,192,0.3); }
+  .status-bar.recording { color: var(--danger); border-color: rgba(255,77,109,0.3); }
+  .status-bar.success { color: var(--success); border-color: rgba(16,185,129,0.3); }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* COMPLETE MODAL */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(8,8,16,0.9);
+    backdrop-filter: blur(10px);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    max-width: 460px;
+    width: 90%;
+    text-align: center;
+  }
+  .modal h2 {
+    font-family: var(--mono);
+    font-size: 20px;
+    color: var(--accent2);
+    margin-bottom: 8px;
+  }
+  .modal p {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 24px;
+    line-height: 1.6;
+  }
+  .modal-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .modal-stat {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 8px;
+  }
+  .modal-stat .val { font-family: var(--mono); font-size: 24px; color: var(--accent); font-weight: 700; }
+  .modal-stat .lbl { font-family: var(--mono); font-size: 9px; color: var(--muted); margin-top: 3px; text-transform: uppercase; letter-spacing: 1px; }
+  .modal-actions { display: flex; gap: 10px; }
+  .modal-actions .btn { flex: 1; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">SIGN<span>TALK</span></div>
+  <div class="pipe-sep"></div>
+  <div class="header-tag">Dataset Collector v2.0</div>
+  <div id="header-status">
+    <div class="status-dot" id="status-dot"></div>
+    <span id="status-text">Iniciando MediaPipe...</span>
+  </div>
+</header>
+
+<!-- LEFT PANEL -->
+<div class="left-panel">
+
+  <!-- MODE -->
+  <div class="panel-section">
+    <div class="section-label">Modo</div>
+    <div class="mode-toggle">
+      <button class="mode-btn active" id="mode-batch" onclick="setMode('batch')">⚡ BATCH</button>
+      <button class="mode-btn" id="mode-manual" onclick="setMode('manual')">✎ MANUAL</button>
+    </div>
+  </div>
+
+  <!-- BATCH MODE: Lista de señas -->
+  <div class="panel-section" id="batch-panel">
+    <div class="section-label">Señas a capturar</div>
+    <div class="señas-grid" id="señas-grid"></div>
+    <div style="margin-top:12px;">
+      <button class="btn btn-primary" id="btn-batch-start" disabled>▶ INICIAR BATCH COMPLETO</button>
+      <button class="btn btn-danger" id="btn-batch-stop" disabled>■ DETENER</button>
+    </div>
+  </div>
+
+  <!-- MANUAL MODE -->
+  <div class="panel-section" id="manual-panel" style="display:none;">
+    <div class="section-label">Configuración manual</div>
+    <div class="input-group">
+      <label>Nombre de la seña</label>
+      <input type="text" id="label-input" placeholder="ej: DOLOR, AGUA...">
+    </div>
+    <div class="input-group">
+      <label>Repeticiones</label>
+      <input type="number" id="reps-input" value="15" min="1" max="50">
+    </div>
+    <div class="input-group">
+      <label>Segundos por seña</label>
+      <input type="number" id="duration-input" value="3" min="1" max="10">
+    </div>
+    <div class="input-group">
+      <label>Preparación (seg)</label>
+      <input type="number" id="prep-input" value="2" min="1" max="5">
+    </div>
+    <button class="btn btn-primary" id="btn-start" disabled>▶ INICIAR CAPTURA</button>
+    <button class="btn btn-danger" id="btn-stop" disabled>■ DETENER</button>
+  </div>
+
+  <!-- PROGRESS -->
+  <div class="panel-section">
+    <div class="section-label">Progreso</div>
+    <div class="progress-wrap">
+      <div class="progress-bar" id="progress-bar"></div>
+    </div>
+    <div class="rep-info">
+      <span>Rep <span id="rep-current">0</span>/<span id="rep-total">15</span></span>
+      <span id="frames-count">0 frames</span>
+    </div>
+  </div>
+
+  <!-- DATASET STATS -->
+  <div class="panel-section">
+    <div class="section-label">Dataset acumulado</div>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="val" id="total-samples">0</div>
+        <div class="lbl">Muestras</div>
+      </div>
+      <div class="stat-card">
+        <div class="val" id="total-classes">0</div>
+        <div class="lbl">Clases</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EXPORT -->
+  <div class="panel-section">
+    <div class="section-label">Exportar</div>
+    <button class="btn btn-success" id="btn-export" disabled>⬇ DESCARGAR JSON</button>
+    <button class="btn btn-outline" id="btn-export-csv" disabled>⬇ DESCARGAR CSV</button>
+  </div>
+
+</div>
+
+<!-- RIGHT PANEL -->
+<div class="right-panel">
+  <div class="phase-label" id="phase-label">— modo batch —</div>
+  <div class="current-seña" id="current-seña">— esperando —</div>
+
+  <div class="video-container">
+    <video id="videoElement" autoplay playsinline></video>
+    <div class="video-overlay">
+      <div class="big-countdown" id="big-countdown"></div>
+    </div>
+    <div class="recording-indicator" id="rec-indicator">
+      <div class="rec-dot"></div>
+      <span id="rec-text">REC</span>
+    </div>
+    <div class="corner-badge" id="corner-badge" style="display:none"></div>
+  </div>
+
+  <div class="status-bar" id="status-bar">Esperando inicio de MediaPipe...</div>
+</div>
+
+<!-- COMPLETE MODAL -->
+<div class="modal-overlay" id="complete-modal">
+  <div class="modal">
+    <h2>✓ CAPTURA COMPLETADA</h2>
+    <p>El dataset está listo para preprocesar y entrenar. Descarga el archivo JSON para continuar con el pipeline.</p>
+    <div class="modal-stats">
+      <div class="modal-stat">
+        <div class="val" id="modal-samples">0</div>
+        <div class="lbl">Muestras</div>
+      </div>
+      <div class="modal-stat">
+        <div class="val" id="modal-classes">0</div>
+        <div class="lbl">Clases</div>
+      </div>
+      <div class="modal-stat">
+        <div class="val" id="modal-frames">0</div>
+        <div class="lbl">Frames tot.</div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-success" onclick="exportJSON()">⬇ DESCARGAR JSON</button>
+      <button class="btn btn-outline" onclick="exportCSV()">⬇ CSV</button>
+      <button class="btn btn-danger" onclick="closeModal()">✕ CERRAR</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ==========================================
+// SEÑAS BATCH PREDEFINIDAS
+// ==========================================
+const SEÑAS_MEDICAS = [
+  { nombre: 'DOLOR',      emoji: '🤕', reps: 15 },
+  { nombre: 'FIEBRE',     emoji: '🌡️', reps: 15 },
+  { nombre: 'AGUA',       emoji: '💧', reps: 15 },
+  { nombre: 'COMER',      emoji: '🍽️', reps: 15 },
+  { nombre: 'MEDICINA',   emoji: '💊', reps: 15 },
+  { nombre: 'EMERGENCIA', emoji: '🚨', reps: 15 },
+];
+
+// ==========================================
+// ESTADO
+// ==========================================
+let dataset = {};
+let isRecording = false;
+let isCapturingFrames = false;
+let currentFrames = [];
+let stopRequested = false;
+let latestLandmarks = null;
+let currentMode = 'batch';
+let cameraReady = false;
+
+// ==========================================
+// DOM
+// ==========================================
+const videoEl = document.getElementById('videoElement');
+const statusBar = document.getElementById('status-bar');
+const bigCountdown = document.getElementById('big-countdown');
+const recIndicator = document.getElementById('rec-indicator');
+const currentSeñaEl = document.getElementById('current-seña');
+const phaseLabel = document.getElementById('phase-label');
+const cornerBadge = document.getElementById('corner-badge');
+
+// ==========================================
+// MODE SWITCH
+// ==========================================
+function setMode(mode) {
+  currentMode = mode;
+  document.getElementById('batch-panel').style.display = mode === 'batch' ? '' : 'none';
+  document.getElementById('manual-panel').style.display = mode === 'manual' ? '' : 'none';
+  document.getElementById('mode-batch').classList.toggle('active', mode === 'batch');
+  document.getElementById('mode-manual').classList.toggle('active', mode === 'manual');
+  phaseLabel.textContent = mode === 'batch' ? '— modo batch —' : '— modo manual —';
+}
+
+// ==========================================
+// RENDER SEÑAS GRID
+// ==========================================
+function renderSeñasGrid() {
+  const grid = document.getElementById('señas-grid');
+  grid.innerHTML = '';
+  for (let i = 0; i < SEÑAS_MEDICAS.length; i++) {
+    const s = SEÑAS_MEDICAS[i];
+    const count = dataset[s.nombre] ? dataset[s.nombre].length : 0;
+    const done = count >= s.reps;
+    const div = document.createElement('div');
+    div.id = `seña-row-${i}`;
+    div.className = `seña-item ${done ? 'done' : 'pending'}`;
+    div.innerHTML = `
+      <div class="seña-icon">${s.emoji}</div>
+      <div class="seña-info">
+        <div class="seña-name">${s.nombre}</div>
+        <div class="seña-count">${count}/${s.reps} muestras</div>
+      </div>
+      <div class="seña-status ${done ? 'done' : 'pending'}">${done ? '✓' : '○'}</div>
+    `;
+    grid.appendChild(div);
+  }
+}
+
+// ==========================================
+// EXTRAER PUNTOS (285 features)
+// ==========================================
+function extraerPuntos(results) {
+  let pose = results.poseLandmarks
+    ? results.poseLandmarks.map(lm => [lm.x, lm.y, lm.z]).flat()
+    : new Array(99).fill(0);
+  let manoIzq = results.leftHandLandmarks
+    ? results.leftHandLandmarks.map(lm => [lm.x, lm.y, lm.z]).flat()
+    : new Array(63).fill(0);
+  let manoDer = results.rightHandLandmarks
+    ? results.rightHandLandmarks.map(lm => [lm.x, lm.y, lm.z]).flat()
+    : new Array(63).fill(0);
+  let face = results.faceLandmarks
+    ? results.faceLandmarks.slice(0, 20).map(lm => [lm.x, lm.y, lm.z]).flat()
+    : new Array(60).fill(0);
+  return [...pose, ...manoIzq, ...manoDer, ...face]; // 285 features
+}
+
+// ==========================================
+// MEDIAPIPE
+// ==========================================
+function onResults(results) {
+  latestLandmarks = results;
+  if (isCapturingFrames && results) {
+    const puntos = extraerPuntos(results);
+    currentFrames.push(puntos);
+    document.getElementById('frames-count').textContent = `${currentFrames.length} frames`;
+  }
+}
+
+const holistic = new Holistic({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${f}` });
+holistic.setOptions({
+  modelComplexity: 1,
+  smoothLandmarks: true,
+  enableSegmentation: false,
+  refineFaceLandmarks: false,
+  minDetectionConfidence: 0.5,
+  minTrackingConfidence: 0.5
+});
+holistic.onResults(onResults);
+
+const camera = new Camera(videoEl, {
+  onFrame: async () => { await holistic.send({ image: videoEl }); },
+  width: 640, height: 480
+});
+
+camera.start().then(() => {
+  cameraReady = true;
+  document.getElementById('status-dot').classList.add('online');
+  document.getElementById('status-text').textContent = 'MediaPipe activo';
+  statusBar.textContent = '✓ Cámara activa. Presiona INICIAR BATCH COMPLETO para comenzar.';
+  statusBar.classList.add('active');
+  document.getElementById('btn-batch-start').disabled = false;
+  document.getElementById('btn-start').disabled = false;
+  renderSeñasGrid();
+});
+
+// ==========================================
+// UTILIDADES
+// ==========================================
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function setSeñaState(idx, state) {
+  const el = document.getElementById(`seña-row-${idx}`);
+  if (!el) return;
+  el.className = `seña-item ${state}`;
+  const statusEl = el.querySelector('.seña-status');
+  if (state === 'current') {
+    statusEl.className = 'seña-status in-progress';
+    statusEl.textContent = '●';
+  } else if (state === 'done') {
+    statusEl.className = 'seña-status done';
+    statusEl.textContent = '✓';
+  } else {
+    statusEl.className = 'seña-status pending';
+    statusEl.textContent = '○';
+  }
+}
+
+// ==========================================
+// CAPTURA DE UNA SEÑA
+// ==========================================
+async function capturarSeña(label, reps, duracionSeg, prepSeg) {
+  if (!dataset[label]) dataset[label] = [];
+  const duracionMs = duracionSeg * 1000;
+  const prepMs = prepSeg * 1000;
+
+  document.getElementById('rep-total').textContent = reps;
+  currentSeñaEl.textContent = label;
+  cornerBadge.style.display = '';
+
+  for (let i = 0; i < reps; i++) {
+    if (stopRequested) break;
+
+    // Actualizar UI
+    document.getElementById('rep-current').textContent = i + 1;
+    cornerBadge.textContent = `${i+1}/${reps}`;
+    statusBar.textContent = `Prepárate: ${label} — rep ${i+1}/${reps}`;
+    statusBar.className = 'status-bar active';
+
+    // Countdown
+    for (let c = prepSeg; c > 0; c--) {
+      if (stopRequested) break;
+      bigCountdown.style.display = 'block';
+      bigCountdown.textContent = c;
+      bigCountdown.style.animation = 'none';
+      bigCountdown.offsetHeight; // reflow
+      bigCountdown.style.animation = 'countPulse 0.5s ease-out';
+      await sleep(1000);
+    }
+    bigCountdown.style.display = 'none';
+    if (stopRequested) break;
+
+    // GRABANDO
+    currentFrames = [];
+    isCapturingFrames = true;
+    recIndicator.classList.add('active');
+    statusBar.textContent = `● GRABANDO ${label} — rep ${i+1}/${reps}`;
+    statusBar.className = 'status-bar recording';
+
+    await sleep(duracionMs);
+
+    isCapturingFrames = false;
+    recIndicator.classList.remove('active');
+
+    if (currentFrames.length > 5) {
+      dataset[label].push([...currentFrames]);
+      actualizarUI(label);
+    }
+
+    // Progreso
+    const pct = ((i + 1) / reps) * 100;
+    document.getElementById('progress-bar').style.width = pct + '%';
+
+    if (i < reps - 1) await sleep(400);
+  }
+
+  cornerBadge.style.display = 'none';
+}
+
+// ==========================================
+// BATCH COMPLETO
+// ==========================================
+document.getElementById('btn-batch-start').addEventListener('click', async () => {
+  stopRequested = false;
+  isRecording = true;
+  document.getElementById('btn-batch-start').disabled = true;
+  document.getElementById('btn-batch-stop').disabled = false;
+
+  const duracion = 3;
+  const prep = 2;
+
+  for (let i = 0; i < SEÑAS_MEDICAS.length; i++) {
+    if (stopRequested) break;
+    const s = SEÑAS_MEDICAS[i];
+    if (dataset[s.nombre] && dataset[s.nombre].length >= s.reps) {
+      // ya tiene suficientes muestras, saltar
+      setSeñaState(i, 'done');
+      continue;
+    }
+
+    setSeñaState(i, 'current');
+    phaseLabel.textContent = `— seña ${i+1} de ${SEÑAS_MEDICAS.length} —`;
+    await capturarSeña(s.nombre, s.reps, duracion, prep);
+    setSeñaState(i, 'done');
+    await sleep(1500);
+  }
+
+  isRecording = false;
+  document.getElementById('btn-batch-start').disabled = false;
+  document.getElementById('btn-batch-stop').disabled = true;
+
+  if (!stopRequested) {
+    // Mostrar modal de completado
+    const totalFrames = Object.values(dataset).reduce((acc, samples) => acc + samples.reduce((a, b) => a + b.length, 0), 0);
+    const totalMuestras = Object.values(dataset).reduce((a, b) => a + b.length, 0);
+    document.getElementById('modal-samples').textContent = totalMuestras;
+    document.getElementById('modal-classes').textContent = Object.keys(dataset).length;
+    document.getElementById('modal-frames').textContent = totalFrames;
+    document.getElementById('complete-modal').classList.add('show');
+  } else {
+    currentSeñaEl.textContent = '— detenido —';
+    statusBar.textContent = 'Captura detenida. Puedes continuar manualmente.';
+    statusBar.className = 'status-bar';
+    phaseLabel.textContent = '— modo batch —';
+  }
+});
+
+document.getElementById('btn-batch-stop').addEventListener('click', () => {
+  stopRequested = true;
+  isCapturingFrames = false;
+  recIndicator.classList.remove('active');
+  bigCountdown.style.display = 'none';
+  document.getElementById('btn-batch-stop').disabled = true;
+});
+
+// ==========================================
+// MODO MANUAL
+// ==========================================
+document.getElementById('btn-start').addEventListener('click', async () => {
+  const label = document.getElementById('label-input').value.trim().toUpperCase();
+  if (!label) { alert('Escribe el nombre de la seña primero.'); return; }
+
+  const reps = parseInt(document.getElementById('reps-input').value);
+  const duracion = parseInt(document.getElementById('duration-input').value);
+  const prep = parseInt(document.getElementById('prep-input').value);
+
+  stopRequested = false;
+  isRecording = true;
+  document.getElementById('btn-start').disabled = true;
+  document.getElementById('btn-stop').disabled = false;
+
+  await capturarSeña(label, reps, duracion, prep);
+
+  isRecording = false;
+  document.getElementById('btn-start').disabled = false;
+  document.getElementById('btn-stop').disabled = true;
+  currentSeñaEl.textContent = '— completado —';
+  statusBar.textContent = `✓ "${label}" completado. Continúa con otra seña.`;
+  statusBar.className = 'status-bar success';
+  document.getElementById('progress-bar').style.width = '100%';
+  setTimeout(() => { document.getElementById('progress-bar').style.width = '0%'; }, 1500);
+});
+
+document.getElementById('btn-stop').addEventListener('click', () => {
+  stopRequested = true;
+  isCapturingFrames = false;
+  recIndicator.classList.remove('active');
+  bigCountdown.style.display = 'none';
+  document.getElementById('btn-stop').disabled = true;
+  statusBar.textContent = 'Captura detenida.';
+  statusBar.className = 'status-bar';
+});
+
+// ==========================================
+// ACTUALIZAR UI
+// ==========================================
+function actualizarUI(label) {
+  const totalMuestras = Object.values(dataset).reduce((a, b) => a + b.length, 0);
+  const totalClases = Object.keys(dataset).length;
+  document.getElementById('total-samples').textContent = totalMuestras;
+  document.getElementById('total-classes').textContent = totalClases;
+
+  if (totalMuestras > 0) {
+    document.getElementById('btn-export').disabled = false;
+    document.getElementById('btn-export-csv').disabled = false;
+  }
+
+  // Actualizar fila en grid
+  const idx = SEÑAS_MEDICAS.findIndex(s => s.nombre === label);
+  if (idx >= 0) {
+    const el = document.getElementById(`seña-row-${idx}`);
+    if (el) {
+      const countEl = el.querySelector('.seña-count');
+      if (countEl) countEl.textContent = `${dataset[label].length}/${SEÑAS_MEDICAS[idx].reps} muestras`;
+    }
+  }
+}
+
+// ==========================================
+// EXPORTAR
+// ==========================================
+function exportJSON() {
+  const payload = {
+    metadata: {
+      version: '2.0',
+      n_features: 285,
+      features_desc: 'pose(99) + mano_izq(63) + mano_der(63) + cara_top20(60)',
+      timestamp: new Date().toISOString(),
+      señas: Object.keys(dataset)
+    },
+    data: dataset
+  };
+  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `signtalk_dataset_${Date.now()}.json`;
+  a.click();
+}
+
+function exportCSV() {
+  const rows = ['label,' + Array.from({length: 285*30}, (_, i) => `f${i}`).join(',')];
+  for (const [label, samples] of Object.entries(dataset)) {
+    for (const frames of samples) {
+      // Pad/truncate a 30 frames
+      const padded = frames.slice(0, 30);
+      while (padded.length < 30) padded.push(new Array(285).fill(0));
+      const flat = padded.flat();
+      rows.push([label, ...flat].join(','));
+    }
+  }
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `signtalk_dataset_${Date.now()}.csv`;
+  a.click();
+}
+
+function closeModal() {
+  document.getElementById('complete-modal').classList.remove('show');
+}
+
+document.getElementById('btn-export').addEventListener('click', exportJSON);
+document.getElementById('btn-export-csv').addEventListener('click', exportCSV);
+
+// Init
+renderSeñasGrid();
+</script>
+</body>
+</html>

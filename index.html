@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SignTalk — Reconocedor de Señas Médicas</title>
+  <meta name="description" content="Reconocimiento en tiempo real de señas médicas con IA usando Bi-LSTM y MediaPipe">
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600;700&display=swap');
+
+    :root {
+      --bg:       #07070f;
+      --surface:  #0e0e1a;
+      --surface2: #13131f;
+      --border:   #1a1a2e;
+      --accent:   #7c5cfc;
+      --cyan:     #00e5c0;
+      --danger:   #ff4d6d;
+      --warn:     #f59e0b;
+      --success:  #10b981;
+      --text:     #e8e8f0;
+      --muted:    #4a4a68;
+      --mono:     'Space Mono', monospace;
+      --sans:     'DM Sans', sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: 56px 1fr;
+      overflow: hidden;
+    }
+
+    /* ── HEADER ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      gap: 16px;
+    }
+
+    .logo {
+      font-family: var(--mono);
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--cyan);
+      letter-spacing: 4px;
+    }
+    .logo span { color: var(--accent); }
+
+    .pipe { width: 1px; height: 20px; background: var(--border); }
+
+    .model-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(124,92,252,0.12);
+      border: 1px solid rgba(124,92,252,0.3);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--accent);
+      letter-spacing: 1px;
+    }
+    .model-badge .dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    #estado {
+      margin-left: auto;
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.5px;
+    }
+
+    /* ── MAIN LAYOUT ── */
+    .main {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      overflow: hidden;
+    }
+
+    /* ── LEFT: VIDEO ── */
+    .left {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      gap: 16px;
+      background: radial-gradient(ellipse at 50% 40%, rgba(124,92,252,0.04) 0%, transparent 70%);
+    }
+
+    .video-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 620px;
+    }
+
+    video {
+      width: 100%;
+      border-radius: 16px;
+      transform: scaleX(-1);
+      display: block;
+      border: 1px solid var(--border);
+    }
+
+    .video-badge {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      background: rgba(7,7,15,0.85);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 5px 12px;
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 1px;
+    }
+    .video-badge.live { color: var(--danger); border-color: rgba(255,77,109,0.4); }
+
+    /* Buffer bar */
+    .buffer-wrap {
+      width: 100%;
+      max-width: 620px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+    }
+    .buffer-label {
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--muted);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .buffer-track {
+      background: var(--border);
+      border-radius: 4px;
+      height: 4px;
+      overflow: hidden;
+    }
+    .buffer-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--cyan));
+      width: 0%;
+      border-radius: 4px;
+      transition: width 0.08s linear;
+    }
+
+    /* Resultado grande */
+    .resultado-card {
+      width: 100%;
+      max-width: 620px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .emoji-seña {
+      font-size: 2.8em;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .nombre-seña {
+      font-family: var(--mono);
+      font-size: 2em;
+      font-weight: 700;
+      color: var(--cyan);
+      letter-spacing: 4px;
+      text-shadow: 0 0 30px rgba(0,229,192,0.4);
+    }
+    #confianza {
+      margin-left: auto;
+      font-family: var(--mono);
+      font-size: 1em;
+      color: var(--cyan);
+    }
+
+    /* ── RIGHT PANEL ── */
+    .right {
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+
+    .panel-section {
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .section-title {
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--muted);
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .section-title::after { content:''; flex:1; height:1px; background:var(--border); }
+
+    /* Frase */
+    #frase {
+      min-height: 52px;
+      line-height: 1.8;
+      font-size: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+    .word {
+      background: rgba(124,92,252,0.12);
+      border: 1px solid rgba(124,92,252,0.25);
+      border-radius: 6px;
+      padding: 3px 10px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--accent);
+      letter-spacing: 1px;
+    }
+    .word-last {
+      background: rgba(0,229,192,0.12);
+      border-color: rgba(0,229,192,0.3);
+      color: var(--cyan);
+    }
+    .arrow { color: var(--muted); font-size: 12px; }
+
+    .btn-limpiar {
+      margin-top: 10px;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 7px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 1px;
+      width: 100%;
+      transition: all 0.2s;
+    }
+    .btn-limpiar:hover { border-color: var(--danger); color: var(--danger); }
+
+    /* Emoción */
+    #emocion {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      min-height: 32px;
+    }
+
+    /* Señas disponibles */
+    .señas-list {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    .seña-chip {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: border-color 0.2s;
+    }
+    .seña-chip.active {
+      border-color: var(--cyan);
+      background: rgba(0,229,192,0.06);
+    }
+    .seña-chip .icon { font-size: 18px; }
+    .seña-chip .lbl { font-family: var(--mono); font-size: 10px; color: var(--text); letter-spacing: 1px; }
+
+    /* Stats */
+    .stats-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .stat {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .stat .val { font-family: var(--mono); font-size: 20px; color: var(--accent); font-weight: 700; }
+    .stat .lbl { font-family: var(--mono); font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
+
+    /* Instrucciones */
+    .tips { display: flex; flex-direction: column; gap: 8px; }
+    .tip {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .tip-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">SIGN<span>TALK</span></div>
+  <div class="pipe"></div>
+  <div class="model-badge">
+    <div class="dot"></div>
+    Bi-LSTM · 96.1% acc · 7 señas médicas
+  </div>
+  <div id="estado">Inicializando...</div>
+</header>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- LEFT: VIDEO + RESULTADO -->
+  <div class="left">
+
+    <div class="video-wrap">
+      <video id="videoElement" autoplay playsinline></video>
+      <div class="video-badge live" id="live-badge">● LIVE</div>
+    </div>
+
+    <!-- Barra de buffer -->
+    <div class="buffer-wrap">
+      <div class="buffer-label">
+        <span>Buffer de frames</span>
+        <span id="buffer-pct">0 / 60 frames</span>
+      </div>
+      <div class="buffer-track">
+        <div class="buffer-fill" id="buffer-bar"></div>
+      </div>
+    </div>
+
+    <!-- Resultado -->
+    <div class="resultado-card">
+      <div id="resultado" style="display:flex;align-items:center;gap:14px;width:100%">
+        <span style="font-family:var(--mono);font-size:14px;color:var(--muted)">Esperando señas...</span>
+      </div>
+      <div id="confianza" style="flex-shrink:0;font-family:var(--mono);font-size:12px;color:var(--muted)"></div>
+    </div>
+
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="right">
+
+    <!-- Frase -->
+    <div class="panel-section">
+      <div class="section-title">Frase construida</div>
+      <div id="frase"></div>
+      <button class="btn-limpiar" id="btn-limpiar">🗑 Limpiar frase</button>
+    </div>
+
+    <!-- Emoción -->
+    <div class="panel-section">
+      <div class="section-title">Emoción detectada</div>
+      <div id="emocion"><span style="color:var(--muted);font-size:13px">—</span></div>
+    </div>
+
+    <!-- Señas disponibles -->
+    <div class="panel-section">
+      <div class="section-title">Señas reconocibles</div>
+      <div class="señas-list" id="señas-list"></div>
+    </div>
+
+    <!-- Stats del modelo -->
+    <div class="panel-section">
+      <div class="section-title">Modelo</div>
+      <div class="stats-row">
+        <div class="stat"><div class="val">96.1%</div><div class="lbl">Test Acc</div></div>
+        <div class="stat"><div class="val">7</div><div class="lbl">Clases</div></div>
+        <div class="stat"><div class="val">855</div><div class="lbl">Features</div></div>
+        <div class="stat"><div class="val">60</div><div class="lbl">Frames</div></div>
+      </div>
+    </div>
+
+    <!-- Instrucciones -->
+    <div class="panel-section">
+      <div class="section-title">Cómo usar</div>
+      <div class="tips">
+        <div class="tip"><span class="tip-icon">💡</span><span>Buena iluminación frontal</span></div>
+        <div class="tip"><span class="tip-icon">🤚</span><span>Mantén la seña visible ~2 segundos hasta que la barra se llene</span></div>
+        <div class="tip"><span class="tip-icon">📏</span><span>Distancia media del cuerpo a la cámara</span></div>
+        <div class="tip"><span class="tip-icon">✅</span><span>La seña se confirma tras 10 frames consecutivos</span></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script>
+// Renderizar señas disponibles
+const SEÑAS_INFO = [
+  {nombre:'ARDOR',emoji:'🔥'},
+  {nombre:'DOLOR',emoji:'🤕'},
+  {nombre:'ESPALDA',emoji:'🪑'},
+  {nombre:'ESTOMAGO',emoji:'🤢'},
+  {nombre:'GARGANTA',emoji:'🗣️'},
+  {nombre:'GRIPE',emoji:'🤧'},
+  {nombre:'NAUSEAS',emoji:'🌀'},
+];
+const grid = document.getElementById('señas-list');
+SEÑAS_INFO.forEach(s => {
+  const div = document.createElement('div');
+  div.className = 'seña-chip';
+  div.id = `chip-${s.nombre}`;
+  div.innerHTML = `<span class="icon">${s.emoji}</span><span class="lbl">${s.nombre}</span>`;
+  grid.appendChild(div);
+});
+
+// Actualizar chip activo cuando cambia resultado
+const observer = new MutationObserver(() => {
+  const texto = document.getElementById('resultado').textContent.trim();
+  document.querySelectorAll('.seña-chip').forEach(c => c.classList.remove('active'));
+  const chip = document.getElementById(`chip-${texto.split(/\s/)[0]}`);
+  if (chip) chip.classList.add('active');
+});
+observer.observe(document.getElementById('resultado'), {childList:true, subtree:true, characterData:true});
+
+// Buffer percentage text
+const origUpdateBar = window.updateBufferBar;
+const bufBar = document.getElementById('buffer-bar');
+const bufPct = document.getElementById('buffer-pct');
+// Patch: override buffer update to also update text
+const _origSet = Object.getOwnPropertyDescriptor(CSSStyleDeclaration.prototype, 'width');
+setInterval(() => {
+  if (bufBar) {
+    const w = parseFloat(bufBar.style.width) || 0;
+    const frames = Math.round(w / 100 * 60);
+    if (bufPct) bufPct.textContent = `${frames} / 60 frames`;
+  }
+}, 100);
+</script>
+</body>
+</html>
