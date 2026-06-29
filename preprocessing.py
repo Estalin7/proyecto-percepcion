@@ -9,6 +9,7 @@ Salida  : X_train, X_val, X_test (N, T, F) y y_* (N,) en .npy
 """
 
 import json
+import os
 import numpy as np
 from scipy.interpolate import interp1d
 from sklearn.model_selection import train_test_split
@@ -16,7 +17,7 @@ from sklearn.model_selection import train_test_split
 # ──────────────────────────────────────────────────
 # CONFIGURACIÓN
 # ──────────────────────────────────────────────────
-JSON_PATH   = "signtalk_dataset_1781385317907.json"
+JSON_PATH   = os.path.join("data_set", "signtalk_dataset_unificado.json")
 T_FRAMES    = 60          # longitud fija de salida
 N_KP        = 95          # keypoints totales (285 / 3)
 COORDS      = 3           # x, y, z

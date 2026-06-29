@@ -1,6 +1,15 @@
 venv_gpu/
 venv_signtalk/
+.venv/
+.venv-train/
 *.npy
 *.keras
 DATOS/
 __pycache__/
+*.pyc
+.DS_Store
+signtalk_dataset_*.json
+signtalk_dataset_*.csv
+!data_set/
+!data_set/signtalk_dataset_unificado.json
+!data_set/signtalk_dataset_unificado.csv

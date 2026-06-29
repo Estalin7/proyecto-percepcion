@@ -3,476 +3,975 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SignTalk — Reconocedor de Señas Médicas</title>
-  <meta name="description" content="Reconocimiento en tiempo real de señas médicas con IA usando Bi-LSTM y MediaPipe">
+  <title>SignTalk — Demo Interactiva</title>
+  <meta name="description" content="Demo visual de SignTalk: reconocimiento de señas médicas, formulación de oraciones y lectura por voz en tiempo real.">
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap');
 
     :root {
-      --bg:       #07070f;
-      --surface:  #0e0e1a;
-      --surface2: #13131f;
-      --border:   #1a1a2e;
-      --accent:   #7c5cfc;
-      --cyan:     #00e5c0;
-      --danger:   #ff4d6d;
-      --warn:     #f59e0b;
-      --success:  #10b981;
-      --text:     #e8e8f0;
-      --muted:    #4a4a68;
-      --mono:     'Space Mono', monospace;
-      --sans:     'DM Sans', sans-serif;
+      --bg: #07111f;
+      --bg-soft: #0c1728;
+      --panel: rgba(11, 23, 40, 0.84);
+      --panel-2: rgba(14, 29, 50, 0.9);
+      --line: rgba(148, 163, 184, 0.15);
+      --text: #edf3ff;
+      --muted: #93a6c1;
+      --cyan: #53f3d5;
+      --violet: #8e7cff;
+      --blue: #5aa6ff;
+      --danger: #ff5f79;
+      --warn: #f8b84e;
+      --success: #18c08f;
+      --mono: 'JetBrains Mono', monospace;
+      --sans: 'Inter', sans-serif;
+      --shadow: 0 30px 80px rgba(3, 8, 18, 0.42);
     }
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
     body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: var(--sans);
       min-height: 100vh;
-      display: grid;
-      grid-template-rows: 56px 1fr;
-      overflow: hidden;
+      font-family: var(--sans);
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(142, 124, 255, 0.24), transparent 28%),
+        radial-gradient(circle at top right, rgba(83, 243, 213, 0.16), transparent 22%),
+        linear-gradient(180deg, #07111f 0%, #081322 40%, #091628 100%);
     }
 
-    /* ── HEADER ── */
-    header {
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
+    a {
+      color: inherit;
+    }
+
+    .app-shell {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 22px;
+    }
+
+    .topbar {
       display: flex;
       align-items: center;
-      padding: 0 24px;
-      gap: 16px;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 16px 18px;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: rgba(7, 17, 31, 0.72);
+      backdrop-filter: blur(18px);
+      box-shadow: var(--shadow);
+      margin-bottom: 18px;
+      flex-wrap: wrap;
     }
 
-    .logo {
-      font-family: var(--mono);
-      font-size: 16px;
-      font-weight: 700;
-      color: var(--cyan);
-      letter-spacing: 4px;
-    }
-    .logo span { color: var(--accent); }
-
-    .pipe { width: 1px; height: 20px; background: var(--border); }
-
-    .model-badge {
+    .brand {
       display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-mark {
+      width: 48px;
+      height: 48px;
+      border-radius: 16px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(135deg, rgba(83, 243, 213, 0.22), rgba(142, 124, 255, 0.26));
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 24px;
+    }
+
+    .brand-name {
+      font-size: 1.12rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+    }
+
+    .brand-sub {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-top: 3px;
+    }
+
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-left: auto;
+    }
+
+    .model-badge,
+    .status-pill,
+    .quick-link {
+      display: inline-flex;
       align-items: center;
       gap: 8px;
-      background: rgba(124,92,252,0.12);
-      border: 1px solid rgba(124,92,252,0.3);
-      border-radius: 20px;
-      padding: 4px 12px;
-      font-family: var(--mono);
-      font-size: 10px;
-      color: var(--accent);
-      letter-spacing: 1px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.03);
+      font-size: 0.86rem;
+      text-decoration: none;
     }
-    .model-badge .dot {
-      width: 6px; height: 6px;
-      border-radius: 50%;
-      background: var(--accent);
-      box-shadow: 0 0 8px var(--accent);
-      animation: pulse 2s infinite;
-    }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
-    #estado {
-      margin-left: auto;
+    .model-badge {
+      color: var(--cyan);
+      border-color: rgba(83, 243, 213, 0.22);
+      background: rgba(83, 243, 213, 0.08);
       font-family: var(--mono);
-      font-size: 10px;
+    }
+
+    .status-pill {
       color: var(--muted);
-      letter-spacing: 0.5px;
+      max-width: 420px;
     }
 
-    /* ── MAIN LAYOUT ── */
-    .main {
+    .quick-link:hover {
+      border-color: rgba(142, 124, 255, 0.3);
+      color: var(--violet);
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--cyan);
+      box-shadow: 0 0 0 0 rgba(83, 243, 213, 0.5);
+      animation: pulse 1.8s infinite;
+    }
+
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(83, 243, 213, 0.45); }
+      70% { box-shadow: 0 0 0 12px rgba(83, 243, 213, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(83, 243, 213, 0); }
+    }
+
+    .hero-banner {
       display: grid;
-      grid-template-columns: 1fr 340px;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .hero-card,
+    .mini-card,
+    .panel-section,
+    .video-card,
+    .result-card,
+    .buffer-wrap {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 26px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    .hero-card {
+      padding: 26px;
+      position: relative;
       overflow: hidden;
     }
 
-    /* ── LEFT: VIDEO ── */
+    .hero-card::after {
+      content: "";
+      position: absolute;
+      width: 280px;
+      height: 280px;
+      right: -80px;
+      bottom: -120px;
+      background: radial-gradient(circle, rgba(83,243,213,0.18), transparent 68%);
+      pointer-events: none;
+    }
+
+    .hero-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(142, 124, 255, 0.24);
+      background: rgba(142, 124, 255, 0.08);
+      color: var(--violet);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      margin-bottom: 16px;
+    }
+
+    .hero-title {
+      font-size: clamp(2rem, 4vw, 3.2rem);
+      line-height: 1.02;
+      font-weight: 800;
+      max-width: 760px;
+      margin-bottom: 14px;
+    }
+
+    .hero-text {
+      color: var(--muted);
+      font-size: 1rem;
+      line-height: 1.8;
+      max-width: 760px;
+      margin-bottom: 20px;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .hero-btn {
+      text-decoration: none;
+      padding: 12px 18px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.03);
+      transition: transform 0.2s ease, border-color 0.2s ease;
+      font-weight: 600;
+    }
+
+    .hero-btn:hover {
+      transform: translateY(-1px);
+      border-color: rgba(83, 243, 213, 0.35);
+    }
+
+    .hero-btn.primary {
+      background: linear-gradient(135deg, var(--cyan), var(--blue));
+      color: #05111f;
+      border: 0;
+    }
+
+    .hero-side {
+      display: grid;
+      gap: 18px;
+    }
+
+    .mini-card {
+      padding: 20px;
+    }
+
+    .mini-card h3 {
+      margin-bottom: 10px;
+      font-size: 1rem;
+    }
+
+    .mini-card p {
+      color: var(--muted);
+      line-height: 1.65;
+      font-size: 0.95rem;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.5fr) 380px;
+      gap: 18px;
+      align-items: start;
+    }
+
     .left {
       display: flex;
       flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-      gap: 16px;
-      background: radial-gradient(ellipse at 50% 40%, rgba(124,92,252,0.04) 0%, transparent 70%);
+      gap: 18px;
     }
 
-    .video-wrap {
+    .video-card {
+      padding: 18px;
+    }
+
+    .card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+
+    .card-title {
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    .card-subtitle {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .live-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 95, 121, 0.22);
+      background: rgba(255, 95, 121, 0.08);
+      color: var(--danger);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+    }
+
+    .video-stage {
       position: relative;
-      width: 100%;
-      max-width: 620px;
+      overflow: hidden;
+      border-radius: 24px;
+      background:
+        radial-gradient(circle at center, rgba(83, 243, 213, 0.1), transparent 35%),
+        #081322;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      aspect-ratio: 16 / 9;
+      min-height: 320px;
     }
 
     video {
       width: 100%;
-      border-radius: 16px;
+      height: 100%;
+      object-fit: cover;
       transform: scaleX(-1);
       display: block;
-      border: 1px solid var(--border);
     }
 
-    .video-badge {
+    .video-overlay {
       position: absolute;
-      top: 12px;
-      left: 12px;
-      background: rgba(7,7,15,0.85);
-      backdrop-filter: blur(8px);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 5px 12px;
-      font-family: var(--mono);
-      font-size: 10px;
-      color: var(--muted);
-      letter-spacing: 1px;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(180deg, rgba(7,17,31,0.08), transparent 18%, transparent 82%, rgba(7,17,31,0.22));
     }
-    .video-badge.live { color: var(--danger); border-color: rgba(255,77,109,0.4); }
 
-    /* Buffer bar */
-    .buffer-wrap {
-      width: 100%;
-      max-width: 620px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
+    .video-chip {
+      position: absolute;
+      top: 18px;
+      left: 18px;
+      z-index: 2;
       padding: 10px 14px;
-    }
-    .buffer-label {
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(7, 17, 31, 0.72);
+      backdrop-filter: blur(12px);
       font-family: var(--mono);
-      font-size: 9px;
+      font-size: 0.78rem;
       color: var(--muted);
-      letter-spacing: 2px;
-      text-transform: uppercase;
-      margin-bottom: 6px;
+    }
+
+    .video-chip strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .buffer-wrap {
+      padding: 18px 20px;
+    }
+
+    .buffer-label {
       display: flex;
+      align-items: center;
       justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 10px;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
     }
+
     .buffer-track {
-      background: var(--border);
-      border-radius: 4px;
-      height: 4px;
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.06);
       overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.05);
     }
+
     .buffer-fill {
       height: 100%;
-      background: linear-gradient(90deg, var(--accent), var(--cyan));
       width: 0%;
-      border-radius: 4px;
-      transition: width 0.08s linear;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--violet), var(--cyan));
+      transition: width 0.12s ease;
     }
 
-    /* Resultado grande */
-    .resultado-card {
-      width: 100%;
-      max-width: 620px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 14px 20px;
+    .result-card {
+      padding: 20px;
+    }
+
+    .result-card .card-subtitle {
+      margin-bottom: 14px;
+    }
+
+    #resultado {
       display: flex;
       align-items: center;
       gap: 16px;
+      width: 100%;
+      min-height: 72px;
+      padding: 16px 18px;
+      border-radius: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
     }
+
     .emoji-seña {
-      font-size: 2.8em;
+      font-size: 3rem;
       line-height: 1;
       flex-shrink: 0;
+      filter: drop-shadow(0 8px 18px rgba(83, 243, 213, 0.18));
     }
+
     .nombre-seña {
       font-family: var(--mono);
-      font-size: 2em;
+      font-size: clamp(1.6rem, 3vw, 2.25rem);
       font-weight: 700;
       color: var(--cyan);
-      letter-spacing: 4px;
-      text-shadow: 0 0 30px rgba(0,229,192,0.4);
+      letter-spacing: 0.09em;
     }
+
     #confianza {
-      margin-left: auto;
+      margin-top: 14px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 12px;
+      border-radius: 999px;
+      background: rgba(83, 243, 213, 0.08);
+      border: 1px solid rgba(83, 243, 213, 0.18);
       font-family: var(--mono);
-      font-size: 1em;
+      font-size: 0.84rem;
       color: var(--cyan);
     }
 
-    /* ── RIGHT PANEL ── */
+    .bottom-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+
     .right {
-      background: var(--surface);
-      border-left: 1px solid var(--border);
       display: flex;
       flex-direction: column;
-      overflow-y: auto;
+      gap: 18px;
+      min-height: 0;
     }
 
     .panel-section {
-      padding: 18px 20px;
-      border-bottom: 1px solid var(--border);
+      padding: 20px;
     }
 
     .section-title {
-      font-family: var(--mono);
-      font-size: 9px;
-      color: var(--muted);
-      letter-spacing: 3px;
-      text-transform: uppercase;
-      margin-bottom: 12px;
       display: flex;
       align-items: center;
-      gap: 8px;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 14px;
     }
-    .section-title::after { content:''; flex:1; height:1px; background:var(--border); }
 
-    /* Frase */
+    .section-title span:first-child {
+      font-size: 0.96rem;
+      font-weight: 700;
+    }
+
+    .section-kicker {
+      font-family: var(--mono);
+      font-size: 0.73rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
     #frase {
-      min-height: 52px;
+      min-height: 68px;
       line-height: 1.8;
-      font-size: 14px;
       display: flex;
       flex-wrap: wrap;
-      gap: 6px;
+      gap: 8px;
       align-items: center;
+      margin-bottom: 12px;
     }
+
     .word {
-      background: rgba(124,92,252,0.12);
-      border: 1px solid rgba(124,92,252,0.25);
-      border-radius: 6px;
-      padding: 3px 10px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(142, 124, 255, 0.1);
+      border: 1px solid rgba(142, 124, 255, 0.22);
+      color: #d4cbff;
       font-family: var(--mono);
-      font-size: 11px;
-      color: var(--accent);
-      letter-spacing: 1px;
+      font-size: 0.8rem;
     }
+
     .word-last {
-      background: rgba(0,229,192,0.12);
-      border-color: rgba(0,229,192,0.3);
+      background: rgba(83, 243, 213, 0.1);
+      border-color: rgba(83, 243, 213, 0.26);
       color: var(--cyan);
     }
-    .arrow { color: var(--muted); font-size: 12px; }
 
-    .btn-limpiar {
-      margin-top: 10px;
-      background: transparent;
-      border: 1px solid var(--border);
+    .arrow {
       color: var(--muted);
-      padding: 7px 14px;
-      border-radius: 6px;
+      font-size: 0.95rem;
+    }
+
+    .btn-limpiar,
+    .tts-btn {
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text);
+      padding: 11px 14px;
       cursor: pointer;
       font-family: var(--mono);
-      font-size: 10px;
-      letter-spacing: 1px;
-      width: 100%;
-      transition: all 0.2s;
+      font-size: 0.78rem;
+      transition: transform 0.2s ease, border-color 0.2s ease;
     }
-    .btn-limpiar:hover { border-color: var(--danger); color: var(--danger); }
 
-    /* Emoción */
-    #emocion {
+    .btn-limpiar:hover,
+    .tts-btn:hover {
+      transform: translateY(-1px);
+      border-color: rgba(142, 124, 255, 0.34);
+    }
+
+    .tts-btn.stop:hover,
+    .btn-limpiar:hover {
+      border-color: rgba(255, 95, 121, 0.36);
+      color: var(--danger);
+    }
+
+    .oracion-box {
+      min-height: 114px;
+      padding: 16px;
+      border-radius: 20px;
+      background: rgba(7, 17, 31, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      line-height: 1.8;
+      font-size: 1rem;
+      color: var(--text);
+      white-space: pre-wrap;
+    }
+
+    #oracion {
+      white-space: pre-wrap;
+    }
+
+    .oracion-note {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 0.88rem;
+      line-height: 1.6;
+    }
+
+    .tts-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .tts-meta {
+      margin-top: 12px;
       display: flex;
       align-items: center;
-      gap: 10px;
-      font-size: 14px;
-      min-height: 32px;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
     }
 
-    /* Señas disponibles */
+    .tts-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .tts-toggle input {
+      accent-color: var(--violet);
+    }
+
+    #voz-estado {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    #emocion {
+      min-height: 46px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 1rem;
+      padding: 14px 16px;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      background: rgba(7, 17, 31, 0.5);
+    }
+
     .señas-list {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 6px;
+      gap: 10px;
     }
+
     .seña-chip {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 8px 10px;
       display: flex;
       align-items: center;
-      gap: 8px;
-      transition: border-color 0.2s;
+      gap: 10px;
+      padding: 12px;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      background: rgba(7, 17, 31, 0.48);
+      transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
     }
-    .seña-chip.active {
-      border-color: var(--cyan);
-      background: rgba(0,229,192,0.06);
-    }
-    .seña-chip .icon { font-size: 18px; }
-    .seña-chip .lbl { font-family: var(--mono); font-size: 10px; color: var(--text); letter-spacing: 1px; }
 
-    /* Stats */
+    .seña-chip.active {
+      border-color: rgba(83, 243, 213, 0.34);
+      background: rgba(83, 243, 213, 0.08);
+      transform: translateY(-1px);
+    }
+
+    .seña-chip .icon {
+      font-size: 1.35rem;
+    }
+
+    .seña-chip .lbl {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      letter-spacing: 0.04em;
+    }
+
     .stats-row {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 8px;
+      gap: 10px;
     }
-    .stat {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 10px 12px;
-    }
-    .stat .val { font-family: var(--mono); font-size: 20px; color: var(--accent); font-weight: 700; }
-    .stat .lbl { font-family: var(--mono); font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
 
-    /* Instrucciones */
-    .tips { display: flex; flex-direction: column; gap: 8px; }
+    .stat {
+      padding: 16px;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      background: rgba(7, 17, 31, 0.5);
+    }
+
+    .stat .val {
+      font-family: var(--mono);
+      font-size: 1.32rem;
+      font-weight: 700;
+      color: var(--violet);
+      margin-bottom: 6px;
+    }
+
+    .stat .lbl {
+      color: var(--muted);
+      font-size: 0.8rem;
+      line-height: 1.5;
+    }
+
+    .tips {
+      display: grid;
+      gap: 10px;
+    }
+
     .tip {
       display: flex;
       align-items: flex-start;
-      gap: 10px;
-      font-size: 12px;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      background: rgba(7, 17, 31, 0.44);
       color: var(--muted);
-      line-height: 1.5;
+      line-height: 1.6;
+      font-size: 0.92rem;
     }
-    .tip-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
 
-    /* Scrollbar */
-    ::-webkit-scrollbar { width: 4px; }
-    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-    ::-webkit-scrollbar-track { background: transparent; }
+    .tip-icon {
+      font-size: 1.15rem;
+      flex-shrink: 0;
+    }
+
+    .footer-note {
+      margin-top: 18px;
+      padding: 14px 16px;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      background: rgba(255, 255, 255, 0.02);
+      color: var(--muted);
+      font-size: 0.88rem;
+      line-height: 1.65;
+    }
+
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 999px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    @media (max-width: 1180px) {
+      .hero-banner,
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .bottom-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .app-shell {
+        padding: 14px;
+      }
+
+      .topbar,
+      .hero-card,
+      .mini-card,
+      .video-card,
+      .buffer-wrap,
+      .result-card,
+      .panel-section {
+        border-radius: 20px;
+      }
+
+      .hero-actions,
+      .tts-actions,
+      .stats-row,
+      .señas-list {
+        grid-template-columns: 1fr;
+      }
+
+      .tts-actions {
+        display: grid;
+      }
+
+      .video-stage {
+        min-height: 240px;
+      }
+    }
   </style>
 </head>
 <body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">🤟</div>
+        <div>
+          <div class="brand-name">SignTalk Demo</div>
+          <div class="brand-sub">Reconocimiento de señas médicas con IA en navegador</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div class="model-badge">
+          <span class="dot"></span>
+          Bi-LSTM · Demo web
+        </div>
+        <div class="status-pill" id="estado">Inicializando...</div>
+        <a class="quick-link" href="capturar.html">Capturar</a>
+      </div>
+    </header>
 
-<!-- HEADER -->
-<header>
-  <div class="logo">SIGN<span>TALK</span></div>
-  <div class="pipe"></div>
-  <div class="model-badge">
-    <div class="dot"></div>
-    Bi-LSTM · 96.1% acc · 7 señas médicas
+    <section class="hero-banner">
+      <article class="hero-card">
+        <div class="hero-eyebrow">Dashboard interactivo de SignTalk</div>
+        <h1 class="hero-title">Detecta señas, construye frases y léelas en voz alta.</h1>
+        <p class="hero-text">
+          Esta demo integra cámara, inferencia local con TensorFlow.js, formulación inicial de
+          oraciones y lectura por voz para mostrar el potencial comunicacional del sistema.
+        </p>
+        <div class="hero-actions">
+          <a class="hero-btn primary" href="capturar.html">Ir a captura</a>
+          <a class="hero-btn" href="INFORME_SIGNTALK_PERCEPCION_COMPUTACIONAL.md">Abrir informe</a>
+        </div>
+      </article>
+
+      <div class="hero-side">
+        <article class="mini-card">
+          <h3>Qué hace esta demo</h3>
+          <p>
+            Detecta señas médicas en tiempo real, confirma palabras por persistencia, arma una frase
+            clínica y puede reproducirla usando la voz del navegador.
+          </p>
+        </article>
+        <article class="mini-card">
+          <h3>Estado del prototipo</h3>
+          <p>
+            El flujo local ya es funcional. Las siguientes fases apuntan a reconocimiento continuo,
+            integración con Spark, MLOps y una operación más formal del sistema.
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <div class="layout">
+      <section class="left">
+        <article class="video-card">
+          <div class="card-head">
+            <div>
+              <div class="card-title">Vista de cámara</div>
+              <div class="card-subtitle">Mantén la seña visible hasta completar el buffer.</div>
+            </div>
+            <div class="live-tag" id="live-badge">● LIVE</div>
+          </div>
+          <div class="video-stage">
+            <video id="videoElement" autoplay playsinline></video>
+            <div class="video-chip"><strong>Modo:</strong> inferencia local en tiempo real</div>
+            <div class="video-overlay"></div>
+          </div>
+        </article>
+
+        <article class="buffer-wrap">
+          <div class="buffer-label">
+            <span>Buffer de frames</span>
+            <span id="buffer-pct">0 / 60 frames</span>
+          </div>
+          <div class="buffer-track">
+            <div class="buffer-fill" id="buffer-bar"></div>
+          </div>
+        </article>
+
+        <article class="result-card">
+          <div class="card-title">Resultado actual</div>
+          <div class="card-subtitle">La predicción se muestra cuando supera el umbral de confianza.</div>
+          <div id="resultado">
+            <span style="font-family:var(--mono);font-size:0.92rem;color:var(--muted)">Esperando señas...</span>
+          </div>
+          <div id="confianza"></div>
+        </article>
+
+        <div class="bottom-grid">
+          <article class="panel-section">
+            <div class="section-title">
+              <span>Frase construida</span>
+              <span class="section-kicker">Palabras confirmadas</span>
+            </div>
+            <div id="frase"></div>
+            <button class="btn-limpiar" id="btn-limpiar">Limpiar frase</button>
+          </article>
+
+          <article class="panel-section">
+            <div class="section-title">
+              <span>Emoción detectada</span>
+              <span class="section-kicker">Señal complementaria</span>
+            </div>
+            <div id="emocion"><span style="color:var(--muted);font-size:0.95rem">—</span></div>
+            <div class="footer-note">
+              La emoción es una heurística visual complementaria y no reemplaza la predicción principal
+              de la seña médica.
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <aside class="right">
+        <article class="panel-section">
+          <div class="section-title">
+            <span>Oración generada</span>
+            <span class="section-kicker">Salida clínica</span>
+          </div>
+          <div class="oracion-box">
+            <div id="oracion">Esperando palabras reconocidas para construir una oracion...</div>
+          </div>
+          <div class="tts-actions">
+            <button class="tts-btn" id="btn-leer">Leer</button>
+            <button class="tts-btn stop" id="btn-detener">Detener</button>
+          </div>
+          <div class="tts-meta">
+            <label class="tts-toggle">
+              <input type="checkbox" id="auto-leer">
+              <span>Lectura automática</span>
+            </label>
+            <div id="voz-estado">Inicializando voz...</div>
+          </div>
+          <div class="oracion-note">
+            Formulación inicial basada en reglas clínicas a partir de palabras confirmadas por el modelo.
+          </div>
+        </article>
+
+        <article class="panel-section">
+          <div class="section-title">
+            <span>Señas reconocibles</span>
+            <span class="section-kicker">Demo web</span>
+          </div>
+          <div class="señas-list" id="señas-list"></div>
+        </article>
+
+        <article class="panel-section">
+          <div class="section-title">
+            <span>Métrica rápida</span>
+            <span class="section-kicker">Referencia visual</span>
+          </div>
+          <div class="stats-row">
+            <div class="stat"><div class="val">96.1%</div><div class="lbl">Accuracy referencial de la demo web</div></div>
+            <div class="stat"><div class="val">7</div><div class="lbl">Señas expuestas en la interfaz actual</div></div>
+            <div class="stat"><div class="val">855</div><div class="lbl">Features con posición, velocidad y aceleración</div></div>
+            <div class="stat"><div class="val">60</div><div class="lbl">Frames por ventana de inferencia</div></div>
+          </div>
+        </article>
+
+        <article class="panel-section">
+          <div class="section-title">
+            <span>Cómo usar</span>
+            <span class="section-kicker">Guía rápida</span>
+          </div>
+          <div class="tips">
+            <div class="tip"><span class="tip-icon">💡</span><span>Usa iluminación frontal uniforme para mejorar la captura de landmarks.</span></div>
+            <div class="tip"><span class="tip-icon">🤚</span><span>Mantén la seña visible unos segundos hasta completar el buffer y confirmar la palabra.</span></div>
+            <div class="tip"><span class="tip-icon">📏</span><span>Ubícate a una distancia media para que se vean rostro, torso y manos.</span></div>
+            <div class="tip"><span class="tip-icon">🔊</span><span>Activa la lectura automática si quieres escuchar cada oración generada al confirmarse.</span></div>
+          </div>
+        </article>
+      </aside>
+    </div>
   </div>
-  <div id="estado">Inicializando...</div>
-</header>
 
-<!-- MAIN -->
-<div class="main">
+  <script src="app.js"></script>
+  <script>
+    const SEÑAS_INFO = [
+      {nombre:'ARDOR',emoji:'🔥'},
+      {nombre:'DOLOR',emoji:'🤕'},
+      {nombre:'ESPALDA',emoji:'🪑'},
+      {nombre:'ESTOMAGO',emoji:'🤢'},
+      {nombre:'GARGANTA',emoji:'🗣️'},
+      {nombre:'GRIPE',emoji:'🤧'},
+      {nombre:'NAUSEAS',emoji:'🌀'},
+    ];
 
-  <!-- LEFT: VIDEO + RESULTADO -->
-  <div class="left">
+    const grid = document.getElementById('señas-list');
+    SEÑAS_INFO.forEach(s => {
+      const div = document.createElement('div');
+      div.className = 'seña-chip';
+      div.id = `chip-${s.nombre}`;
+      div.innerHTML = `<span class="icon">${s.emoji}</span><span class="lbl">${s.nombre}</span>`;
+      grid.appendChild(div);
+    });
 
-    <div class="video-wrap">
-      <video id="videoElement" autoplay playsinline></video>
-      <div class="video-badge live" id="live-badge">● LIVE</div>
-    </div>
+    const observer = new MutationObserver(() => {
+      const texto = document.getElementById('resultado').textContent.trim();
+      document.querySelectorAll('.seña-chip').forEach(c => c.classList.remove('active'));
+      const chip = document.getElementById(`chip-${texto.split(/\s/)[0]}`);
+      if (chip) chip.classList.add('active');
+    });
+    observer.observe(document.getElementById('resultado'), { childList: true, subtree: true, characterData: true });
 
-    <!-- Barra de buffer -->
-    <div class="buffer-wrap">
-      <div class="buffer-label">
-        <span>Buffer de frames</span>
-        <span id="buffer-pct">0 / 60 frames</span>
-      </div>
-      <div class="buffer-track">
-        <div class="buffer-fill" id="buffer-bar"></div>
-      </div>
-    </div>
-
-    <!-- Resultado -->
-    <div class="resultado-card">
-      <div id="resultado" style="display:flex;align-items:center;gap:14px;width:100%">
-        <span style="font-family:var(--mono);font-size:14px;color:var(--muted)">Esperando señas...</span>
-      </div>
-      <div id="confianza" style="flex-shrink:0;font-family:var(--mono);font-size:12px;color:var(--muted)"></div>
-    </div>
-
-  </div>
-
-  <!-- RIGHT PANEL -->
-  <div class="right">
-
-    <!-- Frase -->
-    <div class="panel-section">
-      <div class="section-title">Frase construida</div>
-      <div id="frase"></div>
-      <button class="btn-limpiar" id="btn-limpiar">🗑 Limpiar frase</button>
-    </div>
-
-    <!-- Emoción -->
-    <div class="panel-section">
-      <div class="section-title">Emoción detectada</div>
-      <div id="emocion"><span style="color:var(--muted);font-size:13px">—</span></div>
-    </div>
-
-    <!-- Señas disponibles -->
-    <div class="panel-section">
-      <div class="section-title">Señas reconocibles</div>
-      <div class="señas-list" id="señas-list"></div>
-    </div>
-
-    <!-- Stats del modelo -->
-    <div class="panel-section">
-      <div class="section-title">Modelo</div>
-      <div class="stats-row">
-        <div class="stat"><div class="val">96.1%</div><div class="lbl">Test Acc</div></div>
-        <div class="stat"><div class="val">7</div><div class="lbl">Clases</div></div>
-        <div class="stat"><div class="val">855</div><div class="lbl">Features</div></div>
-        <div class="stat"><div class="val">60</div><div class="lbl">Frames</div></div>
-      </div>
-    </div>
-
-    <!-- Instrucciones -->
-    <div class="panel-section">
-      <div class="section-title">Cómo usar</div>
-      <div class="tips">
-        <div class="tip"><span class="tip-icon">💡</span><span>Buena iluminación frontal</span></div>
-        <div class="tip"><span class="tip-icon">🤚</span><span>Mantén la seña visible ~2 segundos hasta que la barra se llene</span></div>
-        <div class="tip"><span class="tip-icon">📏</span><span>Distancia media del cuerpo a la cámara</span></div>
-        <div class="tip"><span class="tip-icon">✅</span><span>La seña se confirma tras 10 frames consecutivos</span></div>
-      </div>
-    </div>
-
-  </div>
-</div>
-
-<script src="app.js"></script>
-<script>
-// Renderizar señas disponibles
-const SEÑAS_INFO = [
-  {nombre:'ARDOR',emoji:'🔥'},
-  {nombre:'DOLOR',emoji:'🤕'},
-  {nombre:'ESPALDA',emoji:'🪑'},
-  {nombre:'ESTOMAGO',emoji:'🤢'},
-  {nombre:'GARGANTA',emoji:'🗣️'},
-  {nombre:'GRIPE',emoji:'🤧'},
-  {nombre:'NAUSEAS',emoji:'🌀'},
-];
-const grid = document.getElementById('señas-list');
-SEÑAS_INFO.forEach(s => {
-  const div = document.createElement('div');
-  div.className = 'seña-chip';
-  div.id = `chip-${s.nombre}`;
-  div.innerHTML = `<span class="icon">${s.emoji}</span><span class="lbl">${s.nombre}</span>`;
-  grid.appendChild(div);
-});
-
-// Actualizar chip activo cuando cambia resultado
-const observer = new MutationObserver(() => {
-  const texto = document.getElementById('resultado').textContent.trim();
-  document.querySelectorAll('.seña-chip').forEach(c => c.classList.remove('active'));
-  const chip = document.getElementById(`chip-${texto.split(/\s/)[0]}`);
-  if (chip) chip.classList.add('active');
-});
-observer.observe(document.getElementById('resultado'), {childList:true, subtree:true, characterData:true});
-
-// Buffer percentage text
-const origUpdateBar = window.updateBufferBar;
-const bufBar = document.getElementById('buffer-bar');
-const bufPct = document.getElementById('buffer-pct');
-// Patch: override buffer update to also update text
-const _origSet = Object.getOwnPropertyDescriptor(CSSStyleDeclaration.prototype, 'width');
-setInterval(() => {
-  if (bufBar) {
-    const w = parseFloat(bufBar.style.width) || 0;
-    const frames = Math.round(w / 100 * 60);
-    if (bufPct) bufPct.textContent = `${frames} / 60 frames`;
-  }
-}, 100);
-</script>
+    const bufBar = document.getElementById('buffer-bar');
+    const bufPct = document.getElementById('buffer-pct');
+    setInterval(() => {
+      if (!bufBar || !bufPct) return;
+      const w = parseFloat(bufBar.style.width) || 0;
+      const frames = Math.round(w / 100 * 60);
+      bufPct.textContent = `${frames} / 60 frames`;
+    }, 100);
+  </script>
 </body>
 </html>

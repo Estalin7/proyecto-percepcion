@@ -1,3 +1,4 @@
+/* global tf, Holistic, Camera */
 /**
  * SignTalk — Reconocedor en tiempo real
  * Modelo: Bi-LSTM propio (96.1% test accuracy)
@@ -44,6 +45,9 @@ let frameBuffer = [];     // buffer circular de frames crudos (285 features)
 let ultimaSeña = null;
 let contadorConfirm = 0;
 let palabrasFrase = [];
+let vozSeleccionada = null;
+let ultimaOracionLeida = '';
+let speakTimeoutId = null;
 const CONFIRM_FRAMES = 10;  // frames consecutivos para confirmar una seña
 const MAX_FRASE = 8;
 const UMBRAL_CONF = 0.70;   // confianza mínima para mostrar predicción
@@ -55,9 +59,31 @@ const videoEl      = document.getElementById('videoElement');
 const estadoEl     = document.getElementById('estado');
 const resultadoEl  = document.getElementById('resultado');
 const fraseEl      = document.getElementById('frase');
+const oracionEl    = document.getElementById('oracion');
+const btnLeerEl    = document.getElementById('btn-leer');
+const btnDetenerEl = document.getElementById('btn-detener');
+const autoLeerEl   = document.getElementById('auto-leer');
+const vozEstadoEl  = document.getElementById('voz-estado');
 const emocionEl    = document.getElementById('emocion');
 const confianzaEl  = document.getElementById('confianza');
 const bufferBarEl  = document.getElementById('buffer-bar');
+
+const PALABRA_META = {
+  'ARDOR':      { tipo: 'sintoma' },
+  'BIEN':       { tipo: 'estado' },
+  'DOLOR':      { tipo: 'sintoma' },
+  'DORMIR':     { tipo: 'accion' },
+  'ESPALDA':    { tipo: 'zona', texto: 'la espalda' },
+  'ESTAR-BIEN': { tipo: 'estado' },
+  'ESTOMAGO':   { tipo: 'zona', texto: 'el estomago' },
+  'GARGANTA':   { tipo: 'zona', texto: 'la garganta' },
+  'GRIPE':      { tipo: 'diagnostico' },
+  'LO SIENTO':  { tipo: 'cortesia' },
+  'MUCHO':      { tipo: 'intensidad' },
+  'NAUSEAS':    { tipo: 'sintoma_directo' },
+  'PREGUNTAR':  { tipo: 'accion' },
+  'SUDAR':      { tipo: 'accion_sintoma' }
+};
 
 // ──────────────────────────────────────────────────────────
 // 1. EXTRAER 285 FEATURES (igual que capturar.html)
@@ -89,7 +115,6 @@ function extraerPuntos(results) {
 // ──────────────────────────────────────────────────────────
 function normalizarEspacial(seq) {
   // seq: Float32Array o Array de forma (T, 285)
-  const T = seq.length;
   // Reshape mental a (T, 95, 3)
   // Punto de referencia: índice REF_KP → offset = REF_KP * 3
 
@@ -176,8 +201,6 @@ async function predecir(seqCruda) {
   const full = agregarCinematicas(norm);  // (60, 855)
 
   // Crear tensor (1, 60, 855)
-  const flat = [];
-  for (const frame of full) for (const v of frame) flat.push(v);
   const tensor = tf.tensor3d([full], [1, T_FRAMES, FULL_FEAT]);
 
   let probs;
@@ -234,11 +257,202 @@ function actualizarFrase() {
   fraseEl.innerHTML = palabrasFrase.map((p, i) =>
     `<span class="word ${i === palabrasFrase.length-1 ? 'word-last' : ''}">${EMOJIS[p] || ''} ${p}</span>`
   ).join(' <span class="arrow">→</span> ');
+  actualizarOracion();
 }
 
 function limpiarFrase() {
   palabrasFrase = [];
+  ultimaOracionLeida = '';
+  detenerLectura();
   if (fraseEl) fraseEl.innerHTML = '';
+  if (oracionEl) oracionEl.textContent = 'Esperando palabras reconocidas para construir una oracion...';
+}
+
+function obtenerUltimaZona(palabras) {
+  for (let i = palabras.length - 1; i >= 0; i--) {
+    const meta = PALABRA_META[palabras[i]];
+    if (meta?.tipo === 'zona') return meta.texto;
+  }
+  return null;
+}
+
+function unirListaNatural(items) {
+  if (items.length === 0) return '';
+  if (items.length === 1) return items[0];
+  if (items.length === 2) return `${items[0]} y ${items[1]}`;
+  return `${items.slice(0, -1).join(', ')} y ${items[items.length - 1]}`;
+}
+
+function capitalizarOracion(texto) {
+  if (!texto) return '';
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
+}
+
+function construirOracion(palabras) {
+  if (!palabras.length) return '';
+
+  const presentes = new Set(palabras);
+  const zona = obtenerUltimaZona(palabras);
+  const intensidad = presentes.has('MUCHO');
+  const cortesia = presentes.has('LO SIENTO');
+  const quierePreguntar = presentes.has('PREGUNTAR');
+  const estaBien = presentes.has('BIEN') || presentes.has('ESTAR-BIEN');
+
+  const intro = [];
+  const sintomas = [];
+
+  if (quierePreguntar) {
+    intro.push('quiero hacer una pregunta');
+  }
+
+  if (presentes.has('DOLOR') || (zona && !presentes.has('ARDOR') && !presentes.has('NAUSEAS') && !presentes.has('GRIPE'))) {
+    if (zona) {
+      sintomas.push(`me duele${intensidad ? ' mucho' : ''} ${zona}`);
+    } else {
+      sintomas.push(`tengo ${intensidad ? 'mucho ' : ''}dolor`);
+    }
+  }
+
+  if (presentes.has('ARDOR')) {
+    if (zona) {
+      sintomas.push(`tengo ${intensidad ? 'mucho ' : ''}ardor en ${zona}`);
+    } else {
+      sintomas.push(`tengo ${intensidad ? 'mucho ' : ''}ardor`);
+    }
+  }
+
+  if (presentes.has('NAUSEAS')) sintomas.push('tengo nauseas');
+  if (presentes.has('GRIPE')) sintomas.push('tengo gripe');
+  if (presentes.has('SUDAR')) sintomas.push('estoy sudando');
+  if (presentes.has('DORMIR')) sintomas.push('quiero dormir');
+
+  if (sintomas.length === 0 && estaBien) {
+    sintomas.push('estoy bien');
+  }
+
+  const partes = [];
+  if (cortesia) partes.push('lo siento');
+  partes.push(...intro);
+
+  if (sintomas.length > 0) {
+    partes.push(unirListaNatural(sintomas));
+  }
+
+  if (partes.length === 0) {
+    return capitalizarOracion(palabras.join(' ').toLowerCase()) + '.';
+  }
+
+  return partes.map(capitalizarOracion).join('. ') + '.';
+}
+
+function actualizarOracion() {
+  if (!oracionEl) return;
+
+  const texto = construirOracion(palabrasFrase);
+  oracionEl.textContent = texto || 'Esperando palabras reconocidas para construir una oracion...';
+
+  if (autoLeerEl?.checked && texto) {
+    programarLecturaAutomatica(texto);
+  }
+}
+
+function navegadorSoportaLectura() {
+  return 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
+}
+
+function actualizarEstadoVoz(texto, color = '#4a4a68') {
+  if (!vozEstadoEl) return;
+  vozEstadoEl.textContent = texto;
+  vozEstadoEl.style.color = color;
+}
+
+function seleccionarVozEspanol() {
+  if (!navegadorSoportaLectura()) return null;
+
+  const voces = window.speechSynthesis.getVoices();
+  if (!voces.length) return null;
+
+  const prioridades = ['es-PE', 'es-ES', 'es-MX', 'es-US'];
+  for (const locale of prioridades) {
+    const match = voces.find(v => (v.lang || '').toLowerCase() === locale.toLowerCase());
+    if (match) return match;
+  }
+
+  return voces.find(v => (v.lang || '').toLowerCase().startsWith('es')) || voces[0] || null;
+}
+
+function cargarVoces() {
+  if (!navegadorSoportaLectura()) {
+    actualizarEstadoVoz('Lectura no disponible en este navegador', '#ff6b6b');
+    return;
+  }
+
+  vozSeleccionada = seleccionarVozEspanol();
+  if (vozSeleccionada) {
+    actualizarEstadoVoz(`Voz lista: ${vozSeleccionada.name} (${vozSeleccionada.lang})`, '#00e5c0');
+  } else {
+    actualizarEstadoVoz('Esperando voces del navegador...', '#f59e0b');
+  }
+}
+
+function obtenerTextoLeible() {
+  if (!oracionEl) return '';
+  const texto = (oracionEl.textContent || '').trim();
+  if (!texto || texto.startsWith('Esperando palabras reconocidas')) return '';
+  return texto;
+}
+
+function detenerLectura() {
+  if (!navegadorSoportaLectura()) return;
+  if (speakTimeoutId) {
+    clearTimeout(speakTimeoutId);
+    speakTimeoutId = null;
+  }
+  window.speechSynthesis.cancel();
+  actualizarEstadoVoz('Lectura detenida', '#f59e0b');
+}
+
+function leerTexto(texto, { forzado = false } = {}) {
+  if (!navegadorSoportaLectura()) {
+    actualizarEstadoVoz('Lectura no disponible en este navegador', '#ff6b6b');
+    return;
+  }
+
+  if (!texto) {
+    actualizarEstadoVoz('No hay una oracion lista para leer', '#f59e0b');
+    return;
+  }
+
+  if (!forzado && texto === ultimaOracionLeida) return;
+
+  if (!vozSeleccionada) cargarVoces();
+
+  window.speechSynthesis.cancel();
+  const utterance = new window.SpeechSynthesisUtterance(texto);
+  utterance.lang = vozSeleccionada?.lang || 'es-ES';
+  utterance.voice = vozSeleccionada || null;
+  utterance.rate = 0.95;
+  utterance.pitch = 1;
+  utterance.volume = 1;
+
+  utterance.onstart = () => actualizarEstadoVoz('Leyendo oracion...', '#00e5c0');
+  utterance.onend = () => {
+    ultimaOracionLeida = texto;
+    actualizarEstadoVoz('Lectura completada', '#00e5c0');
+  };
+  utterance.onerror = () => actualizarEstadoVoz('No se pudo reproducir la lectura', '#ff6b6b');
+
+  window.speechSynthesis.speak(utterance);
+}
+
+function programarLecturaAutomatica(texto) {
+  if (!texto || texto === ultimaOracionLeida) return;
+
+  if (speakTimeoutId) clearTimeout(speakTimeoutId);
+  speakTimeoutId = window.setTimeout(() => {
+    leerTexto(texto);
+    speakTimeoutId = null;
+  }, 500);
 }
 
 // ──────────────────────────────────────────────────────────
@@ -335,7 +549,7 @@ async function cargarModelo() {
 // ──────────────────────────────────────────────────────────
 // 10. MEDIAPIPE + CÁMARA
 // ──────────────────────────────────────────────────────────
-const holistic = new Holistic({
+const holistic = new window.Holistic({
   locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${f}`
 });
 
@@ -351,7 +565,7 @@ holistic.setOptions({
 holistic.onResults(onResultados);
 
 function iniciarCamara() {
-  const camera = new Camera(videoEl, {
+  const camera = new window.Camera(videoEl, {
     onFrame: async () => { await holistic.send({ image: videoEl }); },
     width: 640, height: 480
   });
@@ -366,6 +580,21 @@ function iniciarCamara() {
 document.addEventListener('DOMContentLoaded', () => {
   const btnLimpiar = document.getElementById('btn-limpiar');
   if (btnLimpiar) btnLimpiar.addEventListener('click', limpiarFrase);
+
+  if (btnLeerEl) {
+    btnLeerEl.addEventListener('click', () => {
+      leerTexto(obtenerTextoLeible(), { forzado: true });
+    });
+  }
+
+  if (btnDetenerEl) {
+    btnDetenerEl.addEventListener('click', detenerLectura);
+  }
+
+  cargarVoces();
+  if (navegadorSoportaLectura()) {
+    window.speechSynthesis.onvoiceschanged = cargarVoces;
+  }
 });
 
 cargarModelo();

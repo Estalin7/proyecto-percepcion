@@ -20,7 +20,17 @@ try:
 except Exception:
     pass
 
-import tensorflow as tf
+try:
+    import tensorflow as tf
+except ModuleNotFoundError as exc:
+    raise SystemExit(
+        "TensorFlow no esta instalado en este entorno.\n"
+        "Usa un entorno de entrenamiento compatible, por ejemplo:\n"
+        "  python3.11 -m venv .venv-train\n"
+        "  source .venv-train/bin/activate\n"
+        "  pip install -r requirements-train.txt tensorflow-metal"
+    ) from exc
+
 gpus = tf.config.list_physical_devices('GPU')
 if gpus:
     tf.config.experimental.set_memory_growth(gpus[0], True)
@@ -35,9 +45,36 @@ from keras.models import Sequential
 from keras.layers import (
     Input, Masking, LSTM, Dense, Dropout, BatchNormalization, Bidirectional
 )
-from keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
+from keras.callbacks import Callback, EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
 from keras.optimizers import Adam
 from sklearn.metrics import classification_report, confusion_matrix
+
+EPOCHS = int(os.environ.get("SIGNTALK_EPOCHS", "200"))
+BATCH_SIZE = int(os.environ.get("SIGNTALK_BATCH_SIZE", "16"))
+FIT_VERBOSE = int(os.environ.get("SIGNTALK_FIT_VERBOSE", "1"))
+EARLY_STOP_PATIENCE = int(os.environ.get("SIGNTALK_EARLY_STOP_PATIENCE", "30"))
+TARGET_VAL_ACCURACY = float(os.environ.get("SIGNTALK_TARGET_VAL_ACC", "0.99"))
+
+
+class StopOnTargetValAccuracy(Callback):
+    """Detiene el entrenamiento cuando la val_accuracy alcanza el objetivo."""
+
+    def __init__(self, target_val_accuracy: float):
+        super().__init__()
+        self.target_val_accuracy = target_val_accuracy
+
+    def on_epoch_end(self, _epoch, logs=None):
+        logs = logs or {}
+        val_accuracy = logs.get("val_accuracy")
+        if val_accuracy is None:
+            return
+
+        if val_accuracy >= self.target_val_accuracy:
+            print(
+                f"\nObjetivo alcanzado: val_accuracy={val_accuracy:.4f} "
+                f">= {self.target_val_accuracy:.4f}. Deteniendo entrenamiento."
+            )
+            self.model.stop_training = True
 
 # ──────────────────────────────────────────────────
 # CARGAR DATOS
@@ -115,7 +152,7 @@ MODEL_OUT = "modelo_bilstm.keras"
 callbacks = [
     EarlyStopping(
         monitor='val_accuracy',
-        patience=30,
+        patience=EARLY_STOP_PATIENCE,
         restore_best_weights=True,
         verbose=1
     ),
@@ -132,21 +169,27 @@ callbacks = [
         min_lr=1e-6,
         verbose=1
     ),
+    StopOnTargetValAccuracy(TARGET_VAL_ACCURACY),
 ]
 
 # ──────────────────────────────────────────────────
 # ENTRENAMIENTO
 # ──────────────────────────────────────────────────
 print(f"\n[3] Entrenando en {'GPU' if gpus else 'CPU'}...")
-print(f"   Epocas max=200 | Batch=16 | EarlyStopping patience=30\n")
+print(
+    "   "
+    f"Epocas max={EPOCHS} | Batch={BATCH_SIZE} | "
+    f"EarlyStopping patience={EARLY_STOP_PATIENCE} | "
+    f"Target val_accuracy={TARGET_VAL_ACCURACY:.2%}\n"
+)
 
 history = model.fit(
     X_train, y_train,
     validation_data=(X_val, y_val),
-    epochs=200,
-    batch_size=16,
+    epochs=EPOCHS,
+    batch_size=BATCH_SIZE,
     callbacks=callbacks,
-    verbose=1
+    verbose=FIT_VERBOSE
 )
 
 # ──────────────────────────────────────────────────
@@ -161,7 +204,13 @@ print(f"   Val   -> loss={loss_v:.4f} | accuracy={acc_v*100:.2f}%")
 y_pred = np.argmax(model.predict(X_test, verbose=0), axis=1)
 
 print("\n[5] Reporte de clasificacion:\n")
-reporte = classification_report(y_test, y_pred, target_names=nombres, digits=3)
+reporte = classification_report(
+    y_test,
+    y_pred,
+    target_names=nombres,
+    digits=3,
+    zero_division=0,
+)
 print(reporte)
 
 print("Matriz de confusion (filas=real, cols=predicho):")

@@ -1,9 +1,16 @@
 {
   "ARDOR": 0,
-  "DOLOR": 1,
-  "ESPALDA": 2,
-  "ESTOMAGO": 3,
-  "GARGANTA": 4,
-  "GRIPE": 5,
-  "NAUSEAS": 6
+  "BIEN": 1,
+  "DOLOR": 2,
+  "DORMIR": 3,
+  "ESPALDA": 4,
+  "ESTAR-BIEN": 5,
+  "ESTOMAGO": 6,
+  "GARGANTA": 7,
+  "GRIPE": 8,
+  "LO SIENTO": 9,
+  "MUCHO": 10,
+  "NAUSEAS": 11,
+  "PREGUNTAR": 12,
+  "SUDAR": 13
 }
